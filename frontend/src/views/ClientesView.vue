@@ -5,7 +5,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">Clientes</h1>
-        <p class="page-sub">{{ clientesFiltrados.length }} clientes encontrados</p>
+        <p class="page-sub">{{ clientes.length }} clientes encontrados</p>
       </div>
       <button class="btn-primary" @click="abrirModalCrear">
         <span>+</span> Nuevo cliente
@@ -25,9 +25,18 @@
       />
     </div>
 
+    <!-- Error global -->
+    <div v-if="errorGlobal" class="error-banner">
+      ⚠️ {{ errorGlobal }}
+      <button @click="errorGlobal = null">✕</button>
+    </div>
+
     <!-- Tabla -->
     <div class="table-wrap">
-      <table class="tabla">
+      <div v-if="cargando" class="loading-state">
+        <div class="spinner" /> Cargando clientes...
+      </div>
+      <table v-else class="tabla">
         <thead>
           <tr>
             <th>Nombre</th>
@@ -43,7 +52,7 @@
           <tr v-if="clientesFiltrados.length === 0">
             <td colspan="7" class="empty-row">No se encontraron clientes</td>
           </tr>
-          <tr v-for="cliente in clientesFiltrados" :key="cliente.id" class="tabla-row">
+          <tr v-for="cliente in clientesFiltrados" :key="cliente._id" class="tabla-row">
             <td>
               <div class="cliente-nombre">
                 <div class="avatar">{{ iniciales(cliente) }}</div>
@@ -61,7 +70,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                   <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
                 </svg>
-                {{ cliente.contadores?.length ?? 0 }}
+                {{ contadoresCliente[cliente._id]?.length ?? '...' }}
               </button>
             </td>
             <td>
@@ -143,15 +152,18 @@
             <button class="btn-close" @click="cerrarModal">✕</button>
           </div>
           <div class="modal-body">
-            <div v-if="!clienteSeleccionado?.contadores?.length" class="empty-state">
+            <div v-if="cargandoContadores" class="loading-state small">
+              <div class="spinner" /> Cargando contadores...
+            </div>
+            <div v-else-if="!contadoresModal.length" class="empty-state">
               Este cliente no tiene contadores asignados
             </div>
             <div v-else class="contadores-list">
-              <div class="contador-item" v-for="c in clienteSeleccionado.contadores" :key="c.id">
-                <span class="contador-emoji">{{ emojiTipo(c.tipo) }}</span>
+              <div class="contador-item" v-for="c in contadoresModal" :key="c._id">
+                <span class="contador-emoji">{{ emojiTipo(c.tipo_suministro) }}</span>
                 <div class="contador-info">
                   <span class="contador-serie">{{ c.numero_serie }}</span>
-                  <span class="contador-tipo">{{ c.tipo }}</span>
+                  <span class="contador-tipo">{{ c.tipo_suministro }}</span>
                 </div>
                 <span class="contador-estado" :class="c.estado.toLowerCase()">{{ c.estado }}</span>
               </div>
@@ -191,9 +203,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { clientesService, contadoresService } from '@/services/api'
 
 // --- Estado ---
+const clientes = ref([])
+const cargando = ref(false)
+const guardando = ref(false)
+const errorGlobal = ref(null)
+const errorModal = ref(null)
 const busqueda = ref('')
 const modalFormulario = ref(false)
 const modalContadores = ref(false)
@@ -201,38 +219,34 @@ const modalEliminar = ref(false)
 const modoEdicion = ref(false)
 const clienteSeleccionado = ref(null)
 const clienteAEliminar = ref(null)
+const contadoresCliente = ref({})
+const contadoresModal = ref([])
+const cargandoContadores = ref(false)
 
 const form = ref({
   nombre: '', apellidos: '', email: '', telefono: '', direccion_facturacion: ''
 })
 const errores = ref({})
 
-// Datos de ejemplo — se reemplazarán con llamadas a la API
-const clientes = ref([
-  {
-    id: '1', nombre: 'Juan', apellidos: 'García López', email: 'juan@email.com',
-    telefono: '612345678', direccion_facturacion: 'Calle Mayor 1, Madrid',
-    fecha_registro: '2024-01-15T10:00:00',
-    contadores: [
-      { id: 'c1', numero_serie: 'SN-2024-001', tipo: 'Electricidad', estado: 'Activo' },
-      { id: 'c2', numero_serie: 'SN-2024-002', tipo: 'Agua', estado: 'Activo' },
-    ]
-  },
-  {
-    id: '2', nombre: 'María', apellidos: 'Martínez Ruiz', email: 'maria@email.com',
-    telefono: '698765432', direccion_facturacion: 'Av. Libertad 24, Valencia',
-    fecha_registro: '2024-02-20T09:30:00',
-    contadores: [
-      { id: 'c3', numero_serie: 'SN-2024-045', tipo: 'Gas', estado: 'Averiado' },
-    ]
-  },
-  {
-    id: '3', nombre: 'Carlos', apellidos: 'Fernández Díaz', email: 'carlos@email.com',
-    telefono: '655112233', direccion_facturacion: 'Plaza España 3, Sevilla',
-    fecha_registro: '2024-03-10T14:00:00',
-    contadores: []
-  },
-])
+onMounted(cargarClientes)
+
+async function cargarClientes() {
+  cargando.value = true
+  errorGlobal.value = null
+  try {
+    clientes.value = await clientesService.getAll()
+    const todosContadores = await contadoresService.getAll(0, 100)
+    clientes.value.forEach(cliente => {
+      contadoresCliente.value[cliente._id] = todosContadores.filter(c =>
+        c.clientes?.includes(cliente._id)
+      )
+    })
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    cargando.value = false
+  }
+}
 
 // --- Computed ---
 const clientesFiltrados = computed(() => {
@@ -254,20 +268,36 @@ const abrirModalCrear = () => {
   modoEdicion.value = false
   form.value = { nombre: '', apellidos: '', email: '', telefono: '', direccion_facturacion: '' }
   errores.value = {}
+  errorModal.value = null
   modalFormulario.value = true
 }
 
 const abrirModalEditar = (cliente) => {
   modoEdicion.value = true
   clienteSeleccionado.value = cliente
-  form.value = { ...cliente }
+  form.value = {
+    nombre: cliente.nombre, apellidos: cliente.apellidos,
+    email: cliente.email, telefono: cliente.telefono,
+    direccion_facturacion: cliente.direccion_facturacion,
+  }
   errores.value = {}
+  errorModal.value = null
   modalFormulario.value = true
 }
 
-const abrirContadores = (cliente) => {
+const abrirContadores = async (cliente) => {
   clienteSeleccionado.value = cliente
   modalContadores.value = true
+  cargandoContadores.value = true
+  contadoresModal.value = []
+  try {
+    const todos = await contadoresService.getAll(0, 100)
+    contadoresModal.value = todos.filter(c => c.clientes?.includes(cliente._id))
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    cargandoContadores.value = false
+  }
 }
 
 const confirmarEliminar = (cliente) => {
@@ -281,6 +311,8 @@ const cerrarModal = () => {
   modalEliminar.value = false
   clienteSeleccionado.value = null
   clienteAEliminar.value = null
+  contadoresModal.value = []
+  errorModal.value = null
 }
 
 // --- Validación ---
@@ -296,26 +328,38 @@ const validar = () => {
   return Object.keys(e).length === 0
 }
 
-// --- Acciones (se reemplazarán con llamadas a la API) ---
-const guardarCliente = () => {
+// --- Acciones con API ---
+const guardarCliente = async () => {
   if (!validar()) return
-  if (modoEdicion.value) {
-    const idx = clientes.value.findIndex(c => c.id === clienteSeleccionado.value.id)
-    clientes.value[idx] = { ...clientes.value[idx], ...form.value }
-  } else {
-    clientes.value.push({
-      id: Date.now().toString(),
-      ...form.value,
-      fecha_registro: new Date().toISOString(),
-      contadores: []
-    })
+  guardando.value = true
+  errorModal.value = null
+  try {
+    if (modoEdicion.value) {
+      await clientesService.update(clienteSeleccionado.value._id, form.value)
+    } else {
+      await clientesService.create(form.value)
+    }
+    await cargarClientes()
+    cerrarModal()
+  } catch (e) {
+    errorModal.value = e.message
+  } finally {
+    guardando.value = false
   }
-  cerrarModal()
 }
 
-const eliminarCliente = () => {
-  clientes.value = clientes.value.filter(c => c.id !== clienteAEliminar.value.id)
-  cerrarModal()
+const eliminarCliente = async () => {
+  guardando.value = true
+  try {
+    await clientesService.delete(clienteAEliminar.value._id)
+    await cargarClientes()
+    cerrarModal()
+  } catch (e) {
+    errorGlobal.value = e.message
+    cerrarModal()
+  } finally {
+    guardando.value = false
+  }
 }
 </script>
 
@@ -356,7 +400,8 @@ const eliminarCliente = () => {
   cursor: pointer;
   transition: opacity 0.2s;
 }
-.btn-primary:hover { opacity: 0.85; }
+.btn-primary:hover:not(:disabled) { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
   background: rgba(255,255,255,0.06);
@@ -369,9 +414,11 @@ const eliminarCliente = () => {
   cursor: pointer;
   transition: background 0.2s;
 }
-.btn-secondary:hover { background: rgba(255,255,255,0.1); }
+.btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-danger {
+  display: flex; align-items: center; gap: 0.4rem;
   background: rgba(255,23,68,0.15);
   color: #ff1744;
   border: 1px solid rgba(255,23,68,0.3);
@@ -382,7 +429,39 @@ const eliminarCliente = () => {
   cursor: pointer;
   transition: background 0.2s;
 }
-.btn-danger:hover { background: rgba(255,23,68,0.25); }
+.btn-danger:hover:not(:disabled) { background: rgba(255,23,68,0.25); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Error banner */
+.error-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(255,23,68,0.1); border: 1px solid rgba(255,23,68,0.3);
+  color: #ff1744; padding: 0.75rem 1rem; border-radius: 8px;
+  font-size: 0.85rem; margin-bottom: 1rem;
+}
+.error-banner button { background: none; border: none; color: #ff1744; cursor: pointer; font-size: 1rem; }
+
+/* Loading */
+.loading-state {
+  display: flex; align-items: center; gap: 0.75rem;
+  color: #4a6080; padding: 3rem; justify-content: center; font-size: 0.85rem;
+}
+.loading-state.small { padding: 1rem; }
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(0,212,255,0.2);
+  border-top-color: #00d4ff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.spinner-sm {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Search */
 .search-bar {
