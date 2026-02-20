@@ -20,6 +20,15 @@
           {{ tipo.emoji }} {{ tipo.label }}
         </button>
       </div>
+      <div class="filtro-chips">
+        <button
+          v-for="c in contadoresUnicos" :key="c.numero_serie"
+          class="chip contador-chip" :class="{ active: filtroContador === c.numero_serie }"
+          @click="filtroContador = filtroContador === c.numero_serie ? null : c.numero_serie"
+        >
+          {{ c.numero_serie }}
+        </button>
+      </div>
       <div class="filtro-fechas">
         <div class="fecha-group">
           <label>Desde</label>
@@ -33,9 +42,18 @@
       </div>
     </div>
 
+    <!-- Error global -->
+    <div v-if="errorGlobal" class="error-banner">
+      ⚠️ {{ errorGlobal }}
+      <button @click="errorGlobal = null">✕</button>
+    </div>
+
     <!-- Tabla -->
     <div class="table-wrap">
-      <table class="tabla">
+      <div v-if="cargando" class="loading-state">
+        <div class="spinner" /> Cargando lecturas...
+      </div>
+      <table v-else class="tabla">
         <thead>
           <tr>
             <th>Tipo</th>
@@ -103,31 +121,31 @@
 
             <!-- Electricidad -->
             <div v-if="lecturaSeleccionada.tipo === 'Electricidad'" class="campos-grid">
-              <div class="campo"><span class="campo-label">Energía activa</span><span class="campo-valor azul">{{ lecturaSeleccionada.datos.energia_activa_kwh }} kWh</span></div>
-              <div class="campo"><span class="campo-label">Energía reactiva</span><span class="campo-valor">{{ lecturaSeleccionada.datos.energia_reactiva_kvarh }} kVArh</span></div>
-              <div class="campo"><span class="campo-label">Potencia activa</span><span class="campo-valor">{{ lecturaSeleccionada.datos.potencia_activa_kw }} kW</span></div>
-              <div class="campo"><span class="campo-label">Potencia reactiva</span><span class="campo-valor">{{ lecturaSeleccionada.datos.potencia_reactiva_kvar }} kVAr</span></div>
-              <div class="campo"><span class="campo-label">Voltaje</span><span class="campo-valor">{{ lecturaSeleccionada.datos.voltaje_v }} V</span></div>
-              <div class="campo"><span class="campo-label">Corriente</span><span class="campo-valor">{{ lecturaSeleccionada.datos.corriente_a }} A</span></div>
-              <div class="campo"><span class="campo-label">Factor de potencia</span><span class="campo-valor">{{ lecturaSeleccionada.datos.factor_potencia }}</span></div>
-              <div class="campo"><span class="campo-label">Frecuencia</span><span class="campo-valor">{{ lecturaSeleccionada.datos.frecuencia_hz }} Hz</span></div>
+              <div class="campo"><span class="campo-label">Energía activa</span><span class="campo-valor azul">{{ lecturaSeleccionada.energia_activa_kwh }} kWh</span></div>
+              <div class="campo"><span class="campo-label">Energía reactiva</span><span class="campo-valor">{{ lecturaSeleccionada.energia_reactiva_kvarh }} kVArh</span></div>
+              <div class="campo"><span class="campo-label">Potencia activa</span><span class="campo-valor">{{ lecturaSeleccionada.potencia_activa_kw }} kW</span></div>
+              <div class="campo"><span class="campo-label">Potencia reactiva</span><span class="campo-valor">{{ lecturaSeleccionada.potencia_reactiva_kvar }} kVAr</span></div>
+              <div class="campo"><span class="campo-label">Voltaje</span><span class="campo-valor">{{ lecturaSeleccionada.voltaje_v }} V</span></div>
+              <div class="campo"><span class="campo-label">Corriente</span><span class="campo-valor">{{ lecturaSeleccionada.corriente_a }} A</span></div>
+              <div class="campo"><span class="campo-label">Factor de potencia</span><span class="campo-valor">{{ lecturaSeleccionada.factor_potencia }}</span></div>
+              <div class="campo"><span class="campo-label">Frecuencia</span><span class="campo-valor">{{ lecturaSeleccionada.frecuencia_hz }} Hz</span></div>
             </div>
 
             <!-- Agua -->
             <div v-if="lecturaSeleccionada.tipo === 'Agua'" class="campos-grid">
-              <div class="campo"><span class="campo-label">Volumen acumulado</span><span class="campo-valor verde">{{ lecturaSeleccionada.datos.volumen_acumulado_m3 }} m³</span></div>
-              <div class="campo"><span class="campo-label">Caudal</span><span class="campo-valor">{{ lecturaSeleccionada.datos.caudal_m3h }} m³/h</span></div>
-              <div class="campo"><span class="campo-label">Presión</span><span class="campo-valor">{{ lecturaSeleccionada.datos.presion_bar }} bar</span></div>
-              <div class="campo"><span class="campo-label">Temperatura</span><span class="campo-valor">{{ lecturaSeleccionada.datos.temperatura_c }} °C</span></div>
+              <div class="campo"><span class="campo-label">Volumen acumulado</span><span class="campo-valor verde">{{ lecturaSeleccionada.volumen_acumulado_m3 }} m³</span></div>
+              <div class="campo"><span class="campo-label">Caudal</span><span class="campo-valor">{{ lecturaSeleccionada.caudal_m3h }} m³/h</span></div>
+              <div class="campo"><span class="campo-label">Presión</span><span class="campo-valor">{{ lecturaSeleccionada.presion_bar }} bar</span></div>
+              <div class="campo"><span class="campo-label">Temperatura</span><span class="campo-valor">{{ lecturaSeleccionada.temperatura_c }} °C</span></div>
             </div>
 
             <!-- Gas -->
             <div v-if="lecturaSeleccionada.tipo === 'Gas'" class="campos-grid">
-              <div class="campo"><span class="campo-label">Volumen acumulado</span><span class="campo-valor naranja">{{ lecturaSeleccionada.datos.volumen_acumulado_m3 }} m³</span></div>
-              <div class="campo"><span class="campo-label">Caudal</span><span class="campo-valor">{{ lecturaSeleccionada.datos.caudal_m3h }} m³/h</span></div>
-              <div class="campo"><span class="campo-label">Presión</span><span class="campo-valor">{{ lecturaSeleccionada.datos.presion_mbar }} mbar</span></div>
-              <div class="campo"><span class="campo-label">Temperatura</span><span class="campo-valor">{{ lecturaSeleccionada.datos.temperatura_c }} °C</span></div>
-              <div class="campo full"><span class="campo-label">Poder calorífico</span><span class="campo-valor">{{ lecturaSeleccionada.datos.poder_calorifico_kwh_m3 }} kWh/m³</span></div>
+              <div class="campo"><span class="campo-label">Volumen acumulado</span><span class="campo-valor naranja">{{ lecturaSeleccionada.volumen_acumulado_m3 }} m³</span></div>
+              <div class="campo"><span class="campo-label">Caudal</span><span class="campo-valor">{{ lecturaSeleccionada.caudal_m3h }} m³/h</span></div>
+              <div class="campo"><span class="campo-label">Presión</span><span class="campo-valor">{{ lecturaSeleccionada.presion_mbar }} mbar</span></div>
+              <div class="campo"><span class="campo-label">Temperatura</span><span class="campo-valor">{{ lecturaSeleccionada.temperatura_c }} °C</span></div>
+              <div class="campo full"><span class="campo-label">Poder calorífico</span><span class="campo-valor">{{ lecturaSeleccionada.poder_calorifico_kwh_m3 }} kWh/m³</span></div>
             </div>
 
             <div class="campo-fecha">
@@ -155,18 +173,19 @@
             <button class="btn-close" @click="cerrarModal">✕</button>
           </div>
           <div class="modal-body" v-if="lecturaSeleccionada">
+            <div v-if="cargandoGrafica" class="loading-state small">
+              <div class="spinner" /> Cargando datos de consumo...
+            </div>
+            <template v-else-if="lecturasGrafica.length">
             <div class="chart-container">
               <svg viewBox="0 0 600 220" preserveAspectRatio="none" class="chart-svg">
-                <!-- Grid -->
                 <line v-for="i in 4" :key="i" :x1="40" :y1="i * 40" :x2="580" :y2="i * 40"
                   stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
-                <!-- Barras -->
                 <rect v-for="(bar, i) in graficaData" :key="i"
                   :x="bar.x" :y="bar.y" :width="bar.w" :height="bar.h"
                   :fill="colorTipo(lecturaSeleccionada.tipo)" opacity="0.7" rx="3"/>
-                <!-- Etiquetas Y -->
                 <text v-for="i in 4" :key="'y'+i" :x="35" :y="i * 40 + 4"
-                  fill="#4a6080" font-size="10" text-anchor="end">{{ Math.round(maxGrafica - (i-1) * (maxGrafica/4)) }}</text>
+                  fill="#4a6080" font-size="10" text-anchor="end">{{ (maxGrafica - (i-1) * (maxGrafica/4)).toFixed(0) }}</text>
               </svg>
               <div class="chart-labels">
                 <span v-for="(bar, i) in graficaData" :key="i">{{ bar.label }}</span>
@@ -178,6 +197,8 @@
               <div class="gstat"><span class="gstat-label">Media</span><span class="gstat-valor">{{ mediaConsumo }} {{ unidad(lecturaSeleccionada.tipo) }}</span></div>
               <div class="gstat"><span class="gstat-label">Total</span><span class="gstat-valor">{{ totalConsumo }} {{ unidad(lecturaSeleccionada.tipo) }}</span></div>
             </div>
+            </template>
+            <div v-else class="empty-state">No hay lecturas suficientes para mostrar la gráfica</div>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" @click="cerrarModal">Cerrar</button>
@@ -190,15 +211,23 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { lecturasService, contadoresService } from '@/services/api'
 
 // --- Estado ---
+const lecturas = ref([])
+const contadores = ref([])
+const cargando = ref(false)
+const errorGlobal = ref(null)
 const filtroTipo = ref(null)
+const filtroContador = ref(null)
 const fechaDesde = ref('')
 const fechaHasta = ref('')
 const modalDetalle = ref(false)
 const modalGrafica = ref(false)
 const lecturaSeleccionada = ref(null)
+const cargandoGrafica = ref(false)
+const lecturasGrafica = ref([])
 
 const tiposFiltro = [
   { value: 'Electricidad', label: 'Electricidad', emoji: '⚡' },
@@ -206,62 +235,54 @@ const tiposFiltro = [
   { value: 'Gas',          label: 'Gas',          emoji: '🔥' },
 ]
 
-// Datos de ejemplo — se reemplazarán con la API
-const lecturas = ref([
-  {
-    id: '1', numero_serie: 'SN-2024-001', tipo: 'Electricidad',
-    fecha: '2025-02-19T10:00:00', consumo_periodo: 145.2,
-    datos: { energia_activa_kwh: 1523.4, energia_reactiva_kvarh: 210.1, potencia_activa_kw: 2.51,
-      potencia_reactiva_kvar: 0.8, voltaje_v: 230.1, corriente_a: 10.9, factor_potencia: 0.95, frecuencia_hz: 50.01 }
-  },
-  {
-    id: '2', numero_serie: 'SN-2024-002', tipo: 'Agua',
-    fecha: '2025-02-19T10:05:00', consumo_periodo: 8.3,
-    datos: { volumen_acumulado_m3: 108.4, caudal_m3h: 0.4, presion_bar: 3.1, temperatura_c: 14.2 }
-  },
-  {
-    id: '3', numero_serie: 'SN-2024-003', tipo: 'Gas',
-    fecha: '2025-02-19T10:10:00', consumo_periodo: 62.1,
-    datos: { volumen_acumulado_m3: 560.3, caudal_m3h: 1.2, presion_mbar: 21.5, temperatura_c: 8.4, poder_calorifico_kwh_m3: 11.2 }
-  },
-  {
-    id: '4', numero_serie: 'SN-2024-001', tipo: 'Electricidad',
-    fecha: '2025-02-18T10:00:00', consumo_periodo: 138.7,
-    datos: { energia_activa_kwh: 1378.2, energia_reactiva_kvarh: 198.4, potencia_activa_kw: 1.8,
-      potencia_reactiva_kvar: 0.6, voltaje_v: 229.8, corriente_a: 7.8, factor_potencia: 0.94, frecuencia_hz: 49.99 }
-  },
-  {
-    id: '5', numero_serie: 'SN-2024-002', tipo: 'Agua',
-    fecha: '2025-02-18T10:05:00', consumo_periodo: 7.1,
-    datos: { volumen_acumulado_m3: 100.1, caudal_m3h: 0.3, presion_bar: 3.0, temperatura_c: 13.8 }
-  },
-])
-
-// Datos simulados de consumo para la gráfica (últimos 7 días)
-const consumoHistorico = {
-  'SN-2024-001': [138, 145, 132, 160, 138, 95, 110],
-  'SN-2024-002': [7.1, 8.3, 6.9, 9.1, 8.8, 5.2, 6.7],
-  'SN-2024-003': [58, 62, 55, 70, 65, 42, 48],
-}
 const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+// --- Carga inicial: todos los contadores → lecturas de cada uno ---
+onMounted(async () => {
+  cargando.value = true
+  errorGlobal.value = null
+  try {
+    contadores.value = await contadoresService.getAll(0, 100)
+    const resultados = await Promise.all(
+      contadores.value.map(c =>
+        lecturasService.getByContador(c._id, 0, 20)
+          .then(ls => ls.map(l => ({
+            ...l,
+            ...l.datos,
+            tipo: l.datos?.tipo ?? c.tipo_suministro,
+            numero_serie: l.datos?.numero_serie ?? c.numero_serie,
+          })))
+          .catch(() => [])
+      )
+    )
+    lecturas.value = resultados.flat().sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    cargando.value = false
+  }
+})
 
 // --- Computed ---
 const lecturasFiltradas = computed(() => {
   return lecturas.value.filter(l => {
     const matchTipo = !filtroTipo.value || l.tipo === filtroTipo.value
+    const matchContador = !filtroContador.value || l.numero_serie === filtroContador.value
     const fecha = new Date(l.fecha)
     const matchDesde = !fechaDesde.value || fecha >= new Date(fechaDesde.value)
     const matchHasta = !fechaHasta.value || fecha <= new Date(fechaHasta.value + 'T23:59:59')
-    return matchTipo && matchDesde && matchHasta
+    return matchTipo && matchContador && matchDesde && matchHasta
   })
 })
 
+// Datos para la gráfica: últimas N lecturas del contador seleccionado
 const graficaData = computed(() => {
-  if (!lecturaSeleccionada.value) return []
-  const data = consumoHistorico[lecturaSeleccionada.value.numero_serie] ?? [0,0,0,0,0,0,0]
-  const max = Math.max(...data)
+  const data = lecturasGrafica.value
+  if (!data.length) return []
+  const consumos = data.map(l => l.consumo_periodo ?? 0)
+  const max = Math.max(...consumos) || 1
   const w = 60, gap = 20, padL = 50, h = 160, padTop = 20
-  return data.map((v, i) => ({
+  return consumos.slice(-7).map((v, i) => ({
     x: padL + i * (w + gap),
     y: padTop + h - (v / max) * h,
     w, h: (v / max) * h,
@@ -270,20 +291,20 @@ const graficaData = computed(() => {
 })
 
 const maxGrafica = computed(() => {
-  if (!lecturaSeleccionada.value) return 0
-  const data = consumoHistorico[lecturaSeleccionada.value.numero_serie] ?? []
-  return Math.max(...data)
+  const consumos = lecturasGrafica.value.map(l => l.consumo_periodo ?? 0)
+  return consumos.length ? Math.max(...consumos) : 0
 })
 
-const consumosArray = computed(() => {
-  if (!lecturaSeleccionada.value) return []
-  return consumoHistorico[lecturaSeleccionada.value.numero_serie] ?? []
-})
+const consumosArray = computed(() => lecturasGrafica.value.map(l => l.consumo_periodo ?? 0).filter(v => v > 0))
+const maxConsumo  = computed(() => consumosArray.value.length ? Math.max(...consumosArray.value).toFixed(2) : '—')
+const minConsumo  = computed(() => consumosArray.value.length ? Math.min(...consumosArray.value).toFixed(2) : '—')
+const mediaConsumo = computed(() => consumosArray.value.length ? (consumosArray.value.reduce((a,b) => a+b, 0) / consumosArray.value.length).toFixed(2) : '—')
+const totalConsumo = computed(() => consumosArray.value.length ? consumosArray.value.reduce((a,b) => a+b, 0).toFixed(2) : '—')
 
-const maxConsumo = computed(() => Math.max(...consumosArray.value).toFixed(1))
-const minConsumo = computed(() => Math.min(...consumosArray.value).toFixed(1))
-const mediaConsumo = computed(() => (consumosArray.value.reduce((a, b) => a + b, 0) / consumosArray.value.length).toFixed(1))
-const totalConsumo = computed(() => consumosArray.value.reduce((a, b) => a + b, 0).toFixed(1))
+// Contadores únicos para el selector
+const contadoresUnicos = computed(() =>
+  [...new Map(lecturas.value.map(l => [l.numero_serie, l])).values()]
+)
 
 // --- Helpers ---
 const emojiTipo = (t) => ({ Electricidad: '⚡', Agua: '💧', Gas: '🔥' }[t] ?? '📊')
@@ -292,17 +313,45 @@ const unidad = (t) => ({ Electricidad: 'kWh', Agua: 'm³', Gas: 'm³' }[t] ?? ''
 const umbralAlto = (t) => ({ Electricidad: 150, Agua: 10, Gas: 80 }[t] ?? 999)
 
 const valorAcumulado = (l) => {
-  if (l.tipo === 'Electricidad') return `${l.datos.energia_activa_kwh} kWh`
-  return `${l.datos.volumen_acumulado_m3} m³`
+  if (l.tipo === 'Electricidad') return `${l.energia_activa_kwh ?? '—'} kWh`
+  return `${l.volumen_acumulado_m3 ?? '—'} m³`
 }
 
 const formatFecha = (f) => new Date(f).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const formatFechaCompleta = (f) => new Date(f).toLocaleString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 // --- Modales ---
-const abrirDetalle = (lectura) => { lecturaSeleccionada.value = lectura; modalDetalle.value = true }
-const abrirGrafica = (lectura) => { lecturaSeleccionada.value = lectura; modalGrafica.value = true }
-const cerrarModal = () => { modalDetalle.value = false; modalGrafica.value = false; lecturaSeleccionada.value = null }
+const abrirDetalle = (lectura) => {
+  lecturaSeleccionada.value = lectura
+  modalDetalle.value = true
+}
+
+const abrirGrafica = async (lectura) => {
+  lecturaSeleccionada.value = lectura
+  modalGrafica.value = true
+  cargandoGrafica.value = true
+  lecturasGrafica.value = []
+  try {
+    // Buscar el contador por numero_serie para obtener su _id
+    const contador = contadores.value.find(c => c.numero_serie === lectura.numero_serie)
+    if (contador) {
+      const ls = await lecturasService.getByContador(contador._id, 0, 7)
+      lecturasGrafica.value = ls.reverse() // orden cronológico
+    }
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    cargandoGrafica.value = false
+  }
+}
+
+const cerrarModal = () => {
+  modalDetalle.value = false
+  modalGrafica.value = false
+  lecturaSeleccionada.value = null
+  lecturasGrafica.value = []
+}
+
 const limpiarFechas = () => { fechaDesde.value = ''; fechaHasta.value = '' }
 </script>
 
@@ -321,6 +370,15 @@ const limpiarFechas = () => { fechaDesde.value = ''; fechaHasta.value = '' }
 .page-title { font-size: 1.6rem; font-weight: 600; margin: 0; }
 .page-sub { font-size: 0.8rem; color: #4a6080; margin: 0.2rem 0 0; }
 
+/* Error/Loading */
+.error-banner { display: flex; justify-content: space-between; align-items: center; background: rgba(255,23,68,0.1); border: 1px solid rgba(255,23,68,0.3); color: #ff1744; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1rem; }
+.error-banner button { background: none; border: none; color: #ff1744; cursor: pointer; font-size: 1rem; }
+.loading-state { display: flex; align-items: center; gap: 0.75rem; color: #4a6080; padding: 3rem; justify-content: center; font-size: 0.85rem; }
+.loading-state.small { padding: 1rem; }
+.spinner { width: 20px; height: 20px; border: 2px solid rgba(0,212,255,0.2); border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-state { text-align: center; color: #4a6080; font-size: 0.85rem; padding: 1.5rem; }
+
 /* Filtros */
 .filtros { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.5rem; }
 .filtro-chips { display: flex; gap: 0.4rem; }
@@ -331,6 +389,7 @@ const limpiarFechas = () => { fechaDesde.value = ''; fechaHasta.value = '' }
 }
 .chip:hover { background: rgba(255,255,255,0.08); color: #a8c8e8; }
 .chip.active { background: rgba(0,212,255,0.12); border-color: rgba(0,212,255,0.3); color: #00d4ff; }
+.chip.contador-chip { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; }
 
 .filtro-fechas { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
 .fecha-group { display: flex; align-items: center; gap: 0.4rem; }

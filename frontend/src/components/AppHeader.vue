@@ -1,6 +1,7 @@
 <template>
   <header class="app-header">
     <div class="header-inner">
+      <!-- Logo / Título -->
       <div class="brand">
         <div class="brand-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -22,26 +23,34 @@
           class="nav-item"
           :class="{ active: isActive(item.to) }"
         >
-          <span class="nav-icon" v-html="item.icon"></span>
+          <span class="nav-icon" v-html="item.icon" />
           <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-indicator" />
         </RouterLink>
       </nav>
 
       <!-- Estado del sistema -->
       <div class="system-status">
-        <span class="status-dot" :class="systemOnline ? 'online' : 'offline'" />
-        <span class="status-text">{{ systemOnline ? 'Sistema activo' : 'Sin conexión' }}</span>
+        <span class="status-dot" :class="systemOnline === null ? 'checking' : systemOnline ? 'online' : 'offline'" />
+        <span class="status-text">{{ statusLabel }}</span>
       </div>
     </div>
   </header>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const systemOnline = ref(true)
+const systemOnline = ref(null) // null = comprobando
+const latencia = ref(null)
+
+const statusLabel = computed(() => {
+  if (systemOnline.value === null) return 'Comprobando...'
+  if (systemOnline.value) return `Sistema activo${latencia.value ? ` · ${latencia.value}ms` : ''}`
+  return 'Sin conexión'
+})
 
 const isActive = (path) => route.path.startsWith(path)
 
@@ -63,6 +72,30 @@ const navItems = [
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`
   },
 ]
+
+// --- Ping a la API cada 30 segundos ---
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+let pingInterval = null
+
+async function pingApi() {
+  const t0 = Date.now()
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(4000) })
+    const data = await res.json()
+    systemOnline.value = data.status === 'ok' && data.mongodb === 'ok'
+    latencia.value = Date.now() - t0
+  } catch {
+    systemOnline.value = false
+    latencia.value = null
+  }
+}
+
+onMounted(() => {
+  pingApi()
+  pingInterval = setInterval(pingApi, 30000)
+})
+
+onUnmounted(() => clearInterval(pingInterval))
 </script>
 
 <style scoped>
@@ -139,19 +172,16 @@ const navItems = [
 .nav {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.25rem;
   flex: 1;
-  height: 100%;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0.85rem;
-  height: 100%;
-  border-radius: 0;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
   text-decoration: none;
   font-family: 'DM Sans', sans-serif;
   font-size: 0.85rem;
@@ -171,35 +201,31 @@ const navItems = [
   background: rgba(0, 212, 255, 0.08);
 }
 
-.nav-item::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #00d4ff;
-  border-radius: 2px 2px 0 0;
-  transform: scaleX(0);
-  transition: transform 0.2s ease;
-}
-
-.nav-item.active::after {
-  transform: scaleX(1);
-}
-
 .nav-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .nav-icon :deep(svg) {
-  width: 100%;
-  height: 100%;
+  width: 16px;
+  height: 16px;
+}
+
+.nav-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 2px;
+  background: #00d4ff;
+  border-radius: 2px 2px 0 0;
+  transition: width 0.2s ease;
+}
+
+.nav-item.active .nav-indicator {
+  width: calc(100% - 1rem);
 }
 
 /* Status */
@@ -226,6 +252,12 @@ const navItems = [
 .status-dot.offline {
   background: #ff1744;
   box-shadow: 0 0 8px rgba(255, 23, 68, 0.6);
+}
+
+.status-dot.checking {
+  background: #ff9100;
+  box-shadow: 0 0 8px rgba(255, 145, 0, 0.6);
+  animation: pulse 0.8s infinite;
 }
 
 .status-text {

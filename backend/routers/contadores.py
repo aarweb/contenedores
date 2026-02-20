@@ -11,6 +11,12 @@ from models.contadores import (
     EstadoContador,
 )
 from database.database import get_database
+from services.docker_manager import (
+    iniciar_contenedor,
+    detener_contenedor,
+    estado_contenedor,
+    listar_contenedores_contadores,
+)
 
 
 router = APIRouter(
@@ -56,6 +62,17 @@ async def crear_contador(
     result = await db.contadores.insert_one(doc)
 
     nuevo_contador = await db.contadores.find_one({"_id": result.inserted_id})
+
+    # Levantar contenedor Docker automáticamente
+    try:
+        iniciar_contenedor(
+            contador_id=str(result.inserted_id),
+            numero_serie=contador.numero_serie,
+            tipo_suministro=doc["tipo_suministro"],
+        )
+    except Exception as e:
+        print(f"[contadores] Error al levantar contenedor: {e}")
+
     return nuevo_contador
 
 
@@ -141,6 +158,29 @@ async def eliminar_contador(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontró un contador con ID {contador_id}",
         )
+
+    try:
+        detener_contenedor(contador_id)
+    except Exception as e:
+        print(f"[contadores] Error al detener contenedor: {e}")
+
+
+@router.get("/{contador_id}/contenedor")
+async def obtener_estado_contenedor(contador_id: str):
+    """Devuelve el estado del contenedor Docker asociado a un contador."""
+    info = estado_contenedor(contador_id)
+    if not info:
+        return {
+            "status": "no_container",
+            "mensaje": "No hay contenedor para este contador",
+        }
+    return info
+
+
+@router.get("/contenedores/todos")
+async def listar_contenedores():
+    """Lista todos los contenedores de contadores activos."""
+    return listar_contenedores_contadores()
 
 
 @router.post("/{contador_id}/clientes/{cliente_id}", status_code=status.HTTP_200_OK)

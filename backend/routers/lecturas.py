@@ -36,20 +36,22 @@ async def crear_lectura(
         )
 
     ultima_lectura = await db.lecturas.find_one(
-        {"contador_id": str(contador["_id"])}, sort=[("fecha", -1)]
+        {"contador_id": str(contador["_id"])}, sort=[("datos.fecha", -1)]
     )
 
     consumo_periodo = None
     if ultima_lectura:
-        if lectura.tipo == TipoContador.ELECTRICIDAD:
-            consumo_periodo = (
+        if lectura.tipo == "Electricidad":
+            consumo_periodo = round(
                 lectura.energia_activa_kwh
-                - ultima_lectura["datos"]["energia_activa_kwh"]
+                - ultima_lectura["datos"]["energia_activa_kwh"],
+                4,
             )
-        elif lectura.tipo in (TipoContador.AGUA, TipoContador.GAS):
-            consumo_periodo = (
+        elif lectura.tipo in ("Agua", "Gas"):
+            consumo_periodo = round(
                 lectura.volumen_acumulado_m3
-                - ultima_lectura["datos"]["volumen_acumulado_m3"]
+                - ultima_lectura["datos"]["volumen_acumulado_m3"],
+                4,
             )
 
     doc = {
@@ -82,7 +84,7 @@ async def obtener_lecturas_por_contador(
 
     lecturas = (
         await db.lecturas.find({"contador_id": contador_id})
-        .sort("fecha", -1)
+        .sort("datos.fecha", -1)
         .skip(skip)
         .limit(limit)
         .to_list(length=limit)
@@ -104,7 +106,7 @@ async def obtener_ultima_lectura(
         )
 
     ultima = await db.lecturas.find_one(
-        {"contador_id": contador_id}, sort=[("fecha", -1)]
+        {"contador_id": contador_id}, sort=[("datos.fecha", -1)]
     )
 
     if not ultima:
@@ -136,10 +138,10 @@ async def obtener_consumo_periodo(
         await db.lecturas.find(
             {
                 "contador_id": contador_id,
-                "fecha": {"$gte": fecha_inicio, "$lte": fecha_fin},
+                "datos.fecha": {"$gte": fecha_inicio, "$lte": fecha_fin},
             }
         )
-        .sort("fecha", 1)
+        .sort("datos.fecha", 1)
         .to_list(length=None)
     )
 
@@ -170,8 +172,8 @@ async def obtener_consumo_periodo(
     return {
         "contador_id": contador_id,
         "tipo_suministro": tipo,
-        "fecha_inicio": primera["fecha"],
-        "fecha_fin": ultima["fecha"],
+        "fecha_inicio": primera["datos"]["fecha"],
+        "fecha_fin": ultima["datos"]["fecha"],
         "num_lecturas": len(lecturas),
         "consumo": consumo,
         "unidad": unidad,

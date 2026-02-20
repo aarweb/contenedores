@@ -10,6 +10,17 @@
       <span class="last-update">Actualizado: {{ horaActual }}</span>
     </div>
 
+    <!-- Error global -->
+    <div v-if="errorGlobal" class="error-banner">
+      ⚠️ {{ errorGlobal }}
+      <button @click="errorGlobal = null">✕</button>
+    </div>
+
+    <!-- Loading overlay sobre las tarjetas -->
+    <div v-if="cargando" class="loading-overlay">
+      <div class="spinner" /> Cargando datos del sistema...
+    </div>
+
     <!-- Tarjetas de estadísticas -->
     <div class="stats-grid">
       <div class="stat-card" v-for="stat in stats" :key="stat.label">
@@ -136,97 +147,183 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { clientesService, contadoresService, lecturasService } from '@/services/api'
 
 const horaActual = ref(new Date().toLocaleTimeString('es-ES'))
-let timer = null
 
-const stats = ref([
+// --- Estado ---
+const cargando = ref(true)
+const totalClientes = ref('—')
+const totalContadoresActivos = ref('—')
+const totalLecturasHoy = ref('—')
+const totalAlertas = ref('—')
+const contadoresPorTipo = ref([])
+const alertas = ref([])
+const ultimasLecturas = ref([])
+const rawData = ref({ luz: [], agua: [], gas: [] })
+const errorGlobal = ref(null)
+
+const chartLegend = [
+  { label: 'Electricidad', color: '#00d4ff' },
+  { label: 'Agua',         color: '#00e676' },
+  { label: 'Gas',          color: '#ff9100' },
+]
+const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+// --- Stats cards (reactivas) ---
+const stats = computed(() => [
   {
     label: 'Clientes',
-    value: 124,
+    value: totalClientes.value,
     color: 'rgba(0,212,255,0.15)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M19 8v6M22 11h-6"/></svg>`
   },
   {
     label: 'Contadores activos',
-    value: 312,
+    value: totalContadoresActivos.value,
     color: 'rgba(0,230,118,0.15)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`
   },
   {
     label: 'Lecturas hoy',
-    value: '1.842',
+    value: totalLecturasHoy.value,
     color: 'rgba(255,145,0,0.15)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="#ff9100" stroke-width="1.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`
   },
   {
     label: 'Alertas activas',
-    value: 7,
+    value: totalAlertas.value,
     color: 'rgba(255,23,68,0.15)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="#ff1744" stroke-width="1.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
   },
 ])
 
-const chartLegend = [
-  { label: 'Electricidad', color: '#00d4ff' },
-  { label: 'Agua', color: '#00e676' },
-  { label: 'Gas', color: '#ff9100' },
-]
-
-const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-
-const rawData = {
-  luz:  [120, 145, 132, 160, 138, 95, 110],
-  agua: [80,  90,  75,  95,  88,  60, 70],
-  gas:  [60,  55,  70,  65,  72,  45, 50],
-}
-
+// --- Gráfica computed ---
 const chartPoints = computed(() => {
   const w = 600, h = 200, pad = 20
-  const max = 180
+  const allVals = [...rawData.value.luz, ...rawData.value.agua, ...rawData.value.gas]
+  const max = allVals.length ? Math.max(...allVals) * 1.1 || 1 : 1
   const toX = (i) => pad + (i / 6) * (w - pad * 2)
   const toY = (v) => h - pad - ((v / max) * (h - pad * 2))
-
   const pts = (arr) => arr.map((v, i) => `${toX(i)},${toY(v)}`).join(' ')
-  const luzPts = rawData.luz.map((v, i) => `${toX(i)},${toY(v)}`)
-
+  const luzPts = rawData.value.luz.map((v, i) => `${toX(i)},${toY(v)}`)
   return {
-    luz: pts(rawData.luz),
-    agua: pts(rawData.agua),
-    gas: pts(rawData.gas),
-    luzArea: `${toX(0)},${h} ${luzPts.join(' ')} ${toX(6)},${h}`,
+    luz:  pts(rawData.value.luz),
+    agua: pts(rawData.value.agua),
+    gas:  pts(rawData.value.gas),
+    luzArea: rawData.value.luz.length
+      ? `${toX(0)},${h} ${luzPts.join(' ')} ${toX(rawData.value.luz.length - 1)},${h}`
+      : '',
   }
 })
 
-const contadoresPorTipo = ref([
-  { label: 'Electricidad', emoji: '⚡', count: 142, pct: 85, color: '#00d4ff' },
-  { label: 'Agua',         emoji: '💧', count: 98,  pct: 58, color: '#00e676' },
-  { label: 'Gas',          emoji: '🔥', count: 72,  pct: 43, color: '#ff9100' },
-])
+// --- Helpers ---
+const emojiTipo = (t) => ({ Electricidad: '⚡', Agua: '💧', Gas: '🔥' }[t] ?? '📊')
+const colorTipo = (t) => ({ Electricidad: '#00d4ff', Agua: '#00e676', Gas: '#ff9100' }[t] ?? '#aaa')
 
-const alertas = ref([
-  { id: 1, serie: 'SN-2024-001', desc: 'Sin lecturas hace 48h', tipo: 'Averiado' },
-  { id: 2, serie: 'SN-2024-087', desc: 'Consumo anómalo detectado', tipo: 'Saboteado' },
-  { id: 3, serie: 'SN-2024-143', desc: 'Presión fuera de rango', tipo: 'Averiado' },
-])
+function formatValorLectura(l, tipo) {
+  if (tipo === 'Electricidad') return `${l.energia_activa_kwh ?? '—'} kWh`
+  return `${l.volumen_acumulado_m3 ?? '—'} m³`
+}
 
-const ultimasLecturas = ref([
-  { id: 1, serie: 'SN-2024-012', emoji: '⚡', color: '#00d4ff', valor: '1.523 kWh', fecha: 'hace 2 min' },
-  { id: 2, serie: 'SN-2024-034', emoji: '💧', color: '#00e676', valor: '108 m³',    fecha: 'hace 5 min' },
-  { id: 3, serie: 'SN-2024-056', emoji: '🔥', color: '#ff9100', valor: '560 m³',    fecha: 'hace 8 min' },
-  { id: 4, serie: 'SN-2024-078', emoji: '⚡', color: '#00d4ff', valor: '2.104 kWh', fecha: 'hace 12 min' },
-  { id: 5, serie: 'SN-2024-091', emoji: '💧', color: '#00e676', valor: '73 m³',     fecha: 'hace 15 min' },
-])
+function tiempoRelativo(fecha) {
+  const diff = Math.floor((Date.now() - new Date(fecha)) / 60000)
+  if (diff < 1)  return 'ahora mismo'
+  if (diff < 60) return `hace ${diff} min`
+  const h = Math.floor(diff / 60)
+  return `hace ${h}h`
+}
 
-onMounted(() => {
-  timer = setInterval(() => {
-    horaActual.value = new Date().toLocaleTimeString('es-ES')
-  }, 1000)
-})
+// --- Agrupador: consumo diario por tipo (7 días) ---
+function consumoDiario(lecturas, tipo) {
+  const hoy = new Date()
+  return Array.from({ length: 7 }, (_, i) => {
+    const dia = new Date(hoy)
+    dia.setDate(hoy.getDate() - (6 - i))
+    const diaStr = dia.toISOString().slice(0, 10)
+    const delDia = lecturas.filter(l =>
+      l.tipo === tipo && l.fecha?.slice(0, 10) === diaStr && l.consumo_periodo != null
+    )
+    return delDia.reduce((acc, l) => acc + (l.consumo_periodo ?? 0), 0)
+  })
+}
 
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
+// --- Carga principal ---
+onMounted(async () => {
+  setInterval(() => { horaActual.value = new Date().toLocaleTimeString('es-ES') }, 1000)
+
+  try {
+    // Clientes y contadores en paralelo
+    const [clientes, contadores] = await Promise.all([
+      clientesService.getAll(0, 1000),
+      contadoresService.getAll(0, 1000),
+    ])
+
+    totalClientes.value = clientes.length
+    totalContadoresActivos.value = contadores.filter(c => c.estado === 'Activo').length
+
+    // Contadores por tipo para las barras
+    const tipos = ['Electricidad', 'Agua', 'Gas']
+    const colores = { Electricidad: '#00d4ff', Agua: '#00e676', Gas: '#ff9100' }
+    const maxTipo = Math.max(...tipos.map(t => contadores.filter(c => c.tipo_suministro === t).length)) || 1
+    contadoresPorTipo.value = tipos.map(t => {
+      const count = contadores.filter(c => c.tipo_suministro === t).length
+      return { label: t, emoji: emojiTipo(t), count, pct: Math.round((count / maxTipo) * 100), color: colores[t] }
+    })
+
+    // Alertas: contadores averiados o saboteados
+    const conProblemas = contadores.filter(c => c.estado !== 'Activo')
+    totalAlertas.value = conProblemas.length
+    alertas.value = conProblemas.slice(0, 5).map(c => ({
+      id: c._id, serie: c.numero_serie,
+      desc: c.estado === 'Saboteado' ? 'Contador saboteado detectado' : 'Contador averiado',
+      tipo: c.estado,
+    }))
+
+    // Lecturas: traer las últimas 20 de cada contador
+    const hoy = new Date().toISOString().slice(0, 10)
+    const todasLecturas = []
+    await Promise.all(contadores.map(async c => {
+      try {
+        const ls = await lecturasService.getByContador(c._id, 0, 20)
+        ls.forEach(l => todasLecturas.push({
+          ...l.datos,
+          _id: l._id,
+          contador_id: l.contador_id,
+          consumo_periodo: l.consumo_periodo,
+          tipo: c.tipo_suministro,
+          numero_serie: c.numero_serie,
+        }))
+      } catch {}
+    }))
+
+    // Lecturas de hoy
+    totalLecturasHoy.value = todasLecturas.filter(l => l.fecha?.slice(0, 10) === hoy).length
+
+    // Gráfica: consumo diario por tipo últimos 7 días
+    rawData.value = {
+      luz:  consumoDiario(todasLecturas, 'Electricidad'),
+      agua: consumoDiario(todasLecturas, 'Agua'),
+      gas:  consumoDiario(todasLecturas, 'Gas'),
+    }
+
+    // Últimas 5 lecturas ordenadas por fecha
+    ultimasLecturas.value = [...todasLecturas]
+      .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      .slice(0, 5)
+      .map(l => ({
+        id: l._id, serie: l.numero_serie,
+        emoji: emojiTipo(l.tipo), color: colorTipo(l.tipo),
+        valor: formatValorLectura(l, l.tipo),
+        fecha: tiempoRelativo(l.fecha),
+      }))
+
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    cargando.value = false
+  }
 })
 </script>
 
@@ -297,7 +394,7 @@ onUnmounted(() => {
   padding: 10px;
 }
 
-.stat-icon :deep(svg) { width: 100%; height: 100%; }
+.stat-icon :deep(svg) { width: 24px; height: 24px; }
 
 .stat-info { display: flex; flex-direction: column; }
 
@@ -547,4 +644,26 @@ onUnmounted(() => {
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .secondary-grid { grid-template-columns: 1fr; }
 }
+
+/* Error / Loading */
+.error-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(255,23,68,0.1); border: 1px solid rgba(255,23,68,0.3);
+  color: #ff1744; padding: 0.75rem 1rem; border-radius: 8px;
+  font-size: 0.85rem; margin-bottom: 1rem;
+}
+.error-banner button { background: none; border: none; color: #ff1744; cursor: pointer; font-size: 1rem; }
+
+.loading-overlay {
+  display: flex; align-items: center; justify-content: center; gap: 0.75rem;
+  background: rgba(8,12,20,0.7); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px; padding: 2rem; color: #4a6080; font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(0,212,255,0.2); border-top-color: #00d4ff;
+  border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

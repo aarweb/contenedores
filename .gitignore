@@ -3,14 +3,11 @@ frontend/node_modules/
 frontend/dist/
 .DS_Store
 
-# ---- Backend (Python) ----
 __pycache__/
 *.py[cod]
 *$py.class
 
-# ---- Docker ----
 .dockerignore
 
-# ---- Variables de entorno y secretos (Aplica a todas las carpetas) ----
 .env
 *.env

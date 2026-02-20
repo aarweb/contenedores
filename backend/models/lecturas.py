@@ -11,7 +11,7 @@ class LecturaBase(BaseModel):
 
 
 class LecturaElectricidad(LecturaBase):
-    tipo: Literal[TipoContador.ELECTRICIDAD] = TipoContador.ELECTRICIDAD
+    tipo: Literal["Electricidad"] = "Electricidad"
     energia_activa_kwh: float = Field(
         ..., ge=0, description="Energía activa acumulada (kWh)"
     )
@@ -37,7 +37,7 @@ class LecturaElectricidad(LecturaBase):
 
 
 class LecturaAgua(LecturaBase):
-    tipo: Literal[TipoContador.AGUA] = TipoContador.AGUA
+    tipo: Literal["Agua"] = "Agua"
 
     volumen_acumulado_m3: float = Field(..., ge=0, description="Volumen acumulado (m³)")
     caudal_m3h: float = Field(..., ge=0, description="Caudal instantáneo (m³/h)")
@@ -48,7 +48,7 @@ class LecturaAgua(LecturaBase):
 
 
 class LecturaGas(LecturaBase):
-    tipo: Literal[TipoContador.GAS] = TipoContador.GAS
+    tipo: Literal["Gas"] = "Gas"
 
     volumen_acumulado_m3: float = Field(
         ..., ge=0, description="Volumen acumulado en condiciones reales (m³)"
