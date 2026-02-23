@@ -32,14 +32,64 @@
       <div class="filtro-fechas">
         <div class="fecha-group">
           <label>Desde</label>
-          <input type="date" v-model="fechaDesde" class="input-fecha" />
+          <input type="date" v-model="fechaDesde" lang="es" class="input-fecha" />
         </div>
         <div class="fecha-group">
           <label>Hasta</label>
-          <input type="date" v-model="fechaHasta" class="input-fecha" />
+          <input type="date" v-model="fechaHasta" lang="es" class="input-fecha" />
         </div>
         <button v-if="fechaDesde || fechaHasta" class="btn-clear" @click="limpiarFechas">✕ Limpiar</button>
+        <button
+          v-if="filtroContador && fechaDesde && fechaHasta"
+          class="btn-analizar"
+          :disabled="cargandoConsumo"
+          @click="analizarConsumo"
+        >
+          <span v-if="cargandoConsumo" class="spinner-sm" />
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:14px;height:14px">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          Analizar consumo
+        </button>
       </div>
+    </div>
+
+    <!-- Panel de análisis de consumo -->
+    <Transition name="panel">
+      <div v-if="consumoData" class="consumo-panel">
+        <div class="consumo-panel-header">
+          <h3 class="consumo-panel-title">
+            {{ emojiTipo(consumoData.tipo_suministro) }} Análisis de consumo — {{ filtroContador }}
+          </h3>
+          <button class="btn-close-sm" @click="consumoData = null">✕</button>
+        </div>
+        <div class="consumo-panel-body">
+          <div class="grafica-stats">
+            <div class="gstat">
+              <span class="gstat-label">Consumo total</span>
+              <span class="gstat-valor destacado">{{ consumoData.consumo.toFixed(2) }} {{ consumoData.unidad }}</span>
+            </div>
+            <div class="gstat">
+              <span class="gstat-label">Nº lecturas</span>
+              <span class="gstat-valor">{{ consumoData.num_lecturas }}</span>
+            </div>
+            <div class="gstat">
+              <span class="gstat-label">Desde</span>
+              <span class="gstat-valor">{{ formatFecha(consumoData.fecha_inicio) }}</span>
+            </div>
+            <div class="gstat">
+              <span class="gstat-label">Hasta</span>
+              <span class="gstat-valor">{{ formatFecha(consumoData.fecha_fin) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Error de análisis -->
+    <div v-if="errorConsumo" class="consumo-aviso">
+      <span>{{ errorConsumo }}</span>
+      <button @click="errorConsumo = null">✕</button>
     </div>
 
     <!-- Error global -->
@@ -211,7 +261,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { lecturasService, contadoresService } from '@/services/api'
 
 // --- Estado ---
@@ -228,6 +278,9 @@ const modalGrafica = ref(false)
 const lecturaSeleccionada = ref(null)
 const cargandoGrafica = ref(false)
 const lecturasGrafica = ref([])
+const cargandoConsumo = ref(false)
+const consumoData = ref(null)
+const errorConsumo = ref(null)
 
 const tiposFiltro = [
   { value: 'Electricidad', label: 'Electricidad', emoji: '⚡' },
@@ -342,6 +395,23 @@ const abrirGrafica = async (lectura) => {
     errorGlobal.value = e.message
   } finally {
     cargandoGrafica.value = false
+  }
+}
+
+const analizarConsumo = async () => {
+  const contador = contadores.value.find(c => c.numero_serie === filtroContador.value)
+  if (!contador) return
+  cargandoConsumo.value = true
+  consumoData.value = null
+  errorConsumo.value = null
+  try {
+    const inicio = new Date(fechaDesde.value).toISOString()
+    const fin = new Date(fechaHasta.value + 'T23:59:59').toISOString()
+    consumoData.value = await lecturasService.getConsumo(contador._id, inicio, fin)
+  } catch (e) {
+    errorConsumo.value = e.message
+  } finally {
+    cargandoConsumo.value = false
   }
 }
 
@@ -468,6 +538,46 @@ const limpiarFechas = () => { fechaDesde.value = ''; fechaHasta.value = '' }
 .gstat { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; text-align: center; }
 .gstat-label { font-size: 0.7rem; color: #4a6080; text-transform: uppercase; letter-spacing: 0.06em; }
 .gstat-valor { font-family: 'Share Tech Mono', monospace; font-size: 0.9rem; color: #e8f4ff; }
+
+/* Botón analizar */
+.btn-analizar {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: rgba(0,212,255,0.1); color: #00d4ff;
+  border: 1px solid rgba(0,212,255,0.25); padding: 0.45rem 1rem;
+  border-radius: 8px; font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background 0.2s;
+}
+.btn-analizar:hover:not(:disabled) { background: rgba(0,212,255,0.18); }
+.btn-analizar:disabled { opacity: 0.5; cursor: not-allowed; }
+.spinner-sm { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+/* Panel de consumo */
+.consumo-panel {
+  background: #0e1420; border: 1px solid rgba(0,212,255,0.15);
+  border-radius: 12px; margin-bottom: 1.5rem; overflow: hidden;
+}
+.consumo-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.consumo-panel-title { font-size: 0.9rem; font-weight: 600; color: #a8c8e8; margin: 0; }
+.btn-close-sm { background: none; border: none; color: #4a6080; font-size: 0.9rem; cursor: pointer; transition: color 0.2s; }
+.btn-close-sm:hover { color: #e8f4ff; }
+.consumo-panel-body { padding: 1.25rem; }
+.gstat-valor.destacado { color: #00d4ff; font-size: 1.1rem; }
+
+/* Aviso de error consumo */
+.consumo-aviso {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(255,145,0,0.1); border: 1px solid rgba(255,145,0,0.25);
+  color: #ff9100; padding: 0.75rem 1rem; border-radius: 8px;
+  font-size: 0.85rem; margin-bottom: 1rem;
+}
+.consumo-aviso button { background: none; border: none; color: #ff9100; cursor: pointer; font-size: 1rem; }
+
+/* Transiciones panel */
+.panel-enter-active, .panel-leave-active { transition: all 0.3s ease; }
+.panel-enter-from, .panel-leave-to { opacity: 0; transform: translateY(-8px); }
 
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-active .modal, .modal-leave-active .modal { transition: transform 0.2s ease; }

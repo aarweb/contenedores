@@ -52,12 +52,12 @@
           <tr>
             <th>Tipo</th><th>Nº Serie</th><th>CUPS / Póliza</th>
             <th>Marca / Modelo</th><th>Dirección</th>
-            <th>Estado</th><th>Clientes</th><th>Acciones</th>
+            <th>Estado</th><th>Contenedor</th><th>Clientes</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="contadoresFiltrados.length === 0">
-            <td colspan="8" class="empty-row">No se encontraron contadores</td>
+            <td colspan="9" class="empty-row">No se encontraron contadores</td>
           </tr>
           <tr v-for="contador in contadoresFiltrados" :key="contador._id" class="tabla-row">
             <td>
@@ -77,6 +77,12 @@
             </td>
             <td>
               <span class="estado-badge" :class="contador.estado.toLowerCase()">{{ contador.estado }}</span>
+            </td>
+            <td>
+              <span class="contenedor-badge" :class="estadoContenedor(contador._id)">
+                <span class="contenedor-dot" />
+                {{ labelContenedor(contador._id) }}
+              </span>
             </td>
             <td>
               <button class="btn-clientes" @click="abrirClientes(contador)">
@@ -244,18 +250,57 @@
             <div v-if="cargandoClientes" class="loading-state small">
               <div class="spinner" /> Cargando clientes...
             </div>
-            <div v-else-if="!clientesModal.length" class="empty-state">
-              Este contador no tiene clientes asignados
-            </div>
-            <div v-else class="clientes-list">
-              <div class="cliente-item" v-for="c in clientesModal" :key="c._id">
-                <div class="avatar">{{ `${c.nombre[0]}${c.apellidos[0]}`.toUpperCase() }}</div>
-                <div class="cliente-info">
-                  <span class="cliente-nombre">{{ c.nombre }} {{ c.apellidos }}</span>
-                  <span class="cliente-email">{{ c.email }}</span>
+            <template v-else>
+              <!-- Buscar y asignar cliente -->
+              <div v-if="clientesDisponibles.length" class="asignar-section">
+                <div class="search-asignar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="search-icon-sm">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                  </svg>
+                  <input
+                    v-model="busquedaCliente"
+                    type="text"
+                    placeholder="Buscar por nombre, email, telefono..."
+                    class="input-buscar-asignar"
+                  />
+                </div>
+                <div v-if="busquedaCliente && clientesFiltradosDisponibles.length" class="resultados-asignar">
+                  <div
+                    v-for="c in clientesFiltradosDisponibles" :key="c._id"
+                    class="resultado-item"
+                    @click="asignarClienteAContador(c._id)"
+                  >
+                    <div class="avatar-sm">{{ `${c.nombre[0]}${c.apellidos[0]}`.toUpperCase() }}</div>
+                    <div class="resultado-info">
+                      <span class="resultado-nombre">{{ c.nombre }} {{ c.apellidos }}</span>
+                      <span class="resultado-detalle">{{ c.email }} · {{ c.telefono }}</span>
+                    </div>
+                    <span class="resultado-add">+</span>
+                  </div>
+                </div>
+                <div v-else-if="busquedaCliente && !clientesFiltradosDisponibles.length" class="empty-state small">
+                  No se encontraron clientes
                 </div>
               </div>
-            </div>
+              <!-- Lista de asignados -->
+              <div v-if="!clientesModal.length" class="empty-state">
+                Este contador no tiene clientes asignados
+              </div>
+              <div v-else class="clientes-list">
+                <div class="cliente-item" v-for="c in clientesModal" :key="c._id">
+                  <div class="avatar">{{ `${c.nombre[0]}${c.apellidos[0]}`.toUpperCase() }}</div>
+                  <div class="cliente-info">
+                    <span class="cliente-nombre">{{ c.nombre }} {{ c.apellidos }}</span>
+                    <span class="cliente-email">{{ c.email }}</span>
+                  </div>
+                  <button class="btn-desasignar" @click="desasignarClienteDeContador(c._id)" title="Desasignar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" @click="cerrarModal">Cerrar</button>
@@ -337,6 +382,11 @@ const modalEliminar = ref(false)
 const modalMapa = ref(false)
 const cargandoClientes = ref(false)
 const clientesModal = ref([])
+const contenedoresStatus = ref({})
+const todosClientes = ref([])
+const clienteAAsignar = ref('')
+const asignandoCliente = ref(false)
+const busquedaCliente = ref('')
 let mapaInstancia = null
 const modoEdicion = ref(false)
 const contadorSeleccionado = ref(null)
@@ -374,12 +424,36 @@ async function cargarContadores() {
   cargando.value = true
   errorGlobal.value = null
   try {
-    contadores.value = await contadoresService.getAll(0, 100)
+    const [lista, contenedores] = await Promise.all([
+      contadoresService.getAll(0, 100),
+      contadoresService.getContenedores().catch(() => []),
+    ])
+    contadores.value = lista
+    const map = {}
+    contenedores.forEach(c => {
+      const id = c.name?.replace('contador-', '')
+      if (id) map[id] = c.status
+    })
+    contenedoresStatus.value = map
   } catch (e) {
     errorGlobal.value = e.message
   } finally {
     cargando.value = false
   }
+}
+
+const estadoContenedor = (id) => {
+  const s = contenedoresStatus.value[id]
+  if (!s) return 'none'
+  if (s === 'running') return 'running'
+  return 'stopped'
+}
+
+const labelContenedor = (id) => {
+  const s = contenedoresStatus.value[id]
+  if (!s) return 'Sin contenedor'
+  if (s === 'running') return 'Running'
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 const contadoresFiltrados = computed(() => {
@@ -497,13 +571,61 @@ const abrirClientes = async (contador) => {
   modalClientes.value = true
   cargandoClientes.value = true
   clientesModal.value = []
+  clienteAAsignar.value = ''
   try {
-    const todos = await clientesService.getAll(0, 100)
-    clientesModal.value = todos.filter(c => contador.clientes?.includes(c._id))
+    todosClientes.value = await clientesService.getAll(0, 100)
+    clientesModal.value = todosClientes.value.filter(c => contador.clientes?.includes(c._id))
   } catch (e) {
     errorGlobal.value = e.message
   } finally {
     cargandoClientes.value = false
+  }
+}
+
+const clientesDisponibles = computed(() => {
+  const asignados = new Set(clientesModal.value.map(c => c._id))
+  return todosClientes.value.filter(c => !asignados.has(c._id))
+})
+
+const clientesFiltradosDisponibles = computed(() => {
+  const q = busquedaCliente.value.toLowerCase()
+  if (!q) return []
+  return clientesDisponibles.value.filter(c =>
+    `${c.nombre} ${c.apellidos}`.toLowerCase().includes(q) ||
+    c.email.toLowerCase().includes(q) ||
+    (c.telefono && c.telefono.includes(q))
+  )
+})
+
+const asignarClienteAContador = async (clienteId) => {
+  const id = clienteId || clienteAAsignar.value
+  if (!id || !contadorSeleccionado.value) return
+  asignandoCliente.value = true
+  try {
+    await contadoresService.asignarCliente(contadorSeleccionado.value._id, id)
+    await cargarContadores()
+    const contadorActualizado = contadores.value.find(c => c._id === contadorSeleccionado.value._id)
+    if (contadorActualizado) contadorSeleccionado.value = contadorActualizado
+    clientesModal.value = todosClientes.value.filter(c => contadorActualizado?.clientes?.includes(c._id))
+    clienteAAsignar.value = ''
+    busquedaCliente.value = ''
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    asignandoCliente.value = false
+  }
+}
+
+const desasignarClienteDeContador = async (clienteId) => {
+  if (!contadorSeleccionado.value) return
+  try {
+    await contadoresService.desasignarCliente(contadorSeleccionado.value._id, clienteId)
+    await cargarContadores()
+    const contadorActualizado = contadores.value.find(c => c._id === contadorSeleccionado.value._id)
+    if (contadorActualizado) contadorSeleccionado.value = contadorActualizado
+    clientesModal.value = todosClientes.value.filter(c => contadorActualizado?.clientes?.includes(c._id))
+  } catch (e) {
+    errorGlobal.value = e.message
   }
 }
 
@@ -656,6 +778,15 @@ const eliminarContador = async () => {
 .estado-badge.averiado { background: rgba(255,145,0,0.12); color: #ff9100; }
 .estado-badge.saboteado { background: rgba(255,23,68,0.12); color: #ff1744; }
 
+.contenedor-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; border-radius: 99px; font-size: 0.72rem; font-weight: 500; }
+.contenedor-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.contenedor-badge.running { background: rgba(0,230,118,0.1); color: #00e676; }
+.contenedor-badge.running .contenedor-dot { background: #00e676; box-shadow: 0 0 6px rgba(0,230,118,0.5); }
+.contenedor-badge.stopped { background: rgba(255,145,0,0.1); color: #ff9100; }
+.contenedor-badge.stopped .contenedor-dot { background: #ff9100; box-shadow: 0 0 6px rgba(255,145,0,0.5); }
+.contenedor-badge.none { background: rgba(255,255,255,0.04); color: #4a6080; }
+.contenedor-badge.none .contenedor-dot { background: #4a6080; }
+
 .btn-clientes { display: flex; align-items: center; gap: 0.35rem; background: rgba(255,255,255,0.05); color: #a8c8e8; border: 1px solid rgba(255,255,255,0.08); padding: 0.3rem 0.7rem; border-radius: 6px; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; cursor: pointer; transition: background 0.2s; }
 .btn-clientes:hover { background: rgba(255,255,255,0.1); }
 .btn-clientes svg { width: 14px; height: 14px; }
@@ -693,9 +824,35 @@ const eliminarContador = async () => {
 .clientes-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .cliente-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; }
 .avatar { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,119,255,0.2)); color: #00d4ff; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
-.cliente-info { display: flex; flex-direction: column; }
+.cliente-info { display: flex; flex-direction: column; flex: 1; }
 .cliente-nombre { font-size: 0.85rem; color: #e8f4ff; font-weight: 500; }
 .cliente-email { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: #4a6080; }
+
+.asignar-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.select-asignar {
+  flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 0.5rem 0.75rem; color: #e8f4ff;
+  font-family: 'DM Sans', sans-serif; font-size: 0.82rem; outline: none;
+}
+.select-asignar option { background: #0e1420; }
+.select-asignar:focus { border-color: #00d4ff; }
+.btn-asignar {
+  display: flex; align-items: center; gap: 0.3rem;
+  background: rgba(0,230,118,0.1); color: #00e676;
+  border: 1px solid rgba(0,230,118,0.25); padding: 0.5rem 1rem;
+  border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 0.8rem;
+  cursor: pointer; white-space: nowrap; transition: background 0.2s;
+}
+.btn-asignar:hover:not(:disabled) { background: rgba(0,230,118,0.18); }
+.btn-asignar:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-desasignar {
+  width: 28px; height: 28px; border-radius: 6px; border: none;
+  background: rgba(255,23,68,0.08); color: #ff1744;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s; flex-shrink: 0;
+}
+.btn-desasignar:hover { background: rgba(255,23,68,0.18); }
+.btn-desasignar svg { width: 14px; height: 14px; }
 
 .empty-state { text-align: center; color: #4a6080; font-size: 0.85rem; padding: 1rem; }
 .confirm-text { color: #a8c8e8; font-size: 0.9rem; line-height: 1.6; margin: 0; }
@@ -754,4 +911,47 @@ const eliminarContador = async () => {
 }
 .coord-group input:focus { border-color: #00d4ff; }
 .coord-group input.error { border-color: #ff1744; }
+
+/* Sección buscar y asignar cliente */
+.asignar-section { margin-bottom: 1rem; }
+.search-asignar {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 0.5rem 0.75rem;
+}
+.search-asignar:focus-within { border-color: #00d4ff; }
+.search-icon-sm { width: 16px; height: 16px; color: #4a6080; flex-shrink: 0; }
+.input-buscar-asignar {
+  flex: 1; background: none; border: none; outline: none;
+  color: #e8f4ff; font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+}
+.input-buscar-asignar::placeholder { color: #4a6080; }
+.resultados-asignar {
+  margin-top: 0.5rem; max-height: 200px; overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+}
+.resultado-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.75rem; cursor: pointer; transition: background 0.15s;
+}
+.resultado-item:hover { background: rgba(0,212,255,0.08); }
+.resultado-item + .resultado-item { border-top: 1px solid rgba(255,255,255,0.04); }
+.avatar-sm {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,119,255,0.2));
+  color: #00d4ff; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; flex-shrink: 0;
+}
+.resultado-info { flex: 1; display: flex; flex-direction: column; }
+.resultado-nombre { font-size: 0.82rem; color: #e8f4ff; font-weight: 500; }
+.resultado-detalle { font-size: 0.7rem; color: #4a6080; font-family: 'Share Tech Mono', monospace; }
+.resultado-emoji { font-size: 1.1rem; flex-shrink: 0; }
+.resultado-add {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,230,118,0.12); color: #00e676;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; font-weight: 700; flex-shrink: 0;
+}
+.empty-state.small { padding: 0.5rem; font-size: 0.8rem; }
 </style>

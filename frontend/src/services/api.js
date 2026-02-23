@@ -50,6 +50,8 @@ export const contadoresService = {
   delete:           (id)              => api.delete(`/contadores/${id}`),
   asignarCliente:   (contadorId, clienteId) => api.post(`/contadores/${contadorId}/clientes/${clienteId}`),
   desasignarCliente:(contadorId, clienteId) => api.delete(`/contadores/${contadorId}/clientes/${clienteId}`),
+  getContenedor:    (contadorId)            => api.get(`/contadores/${contadorId}/contenedor`),
+  getContenedores:  ()                      => api.get(`/contadores/contenedores/todos`),
 }
 
 

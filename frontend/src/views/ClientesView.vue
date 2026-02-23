@@ -155,19 +155,58 @@
             <div v-if="cargandoContadores" class="loading-state small">
               <div class="spinner" /> Cargando contadores...
             </div>
-            <div v-else-if="!contadoresModal.length" class="empty-state">
-              Este cliente no tiene contadores asignados
-            </div>
-            <div v-else class="contadores-list">
-              <div class="contador-item" v-for="c in contadoresModal" :key="c._id">
-                <span class="contador-emoji">{{ emojiTipo(c.tipo_suministro) }}</span>
-                <div class="contador-info">
-                  <span class="contador-serie">{{ c.numero_serie }}</span>
-                  <span class="contador-tipo">{{ c.tipo_suministro }}</span>
+            <template v-else>
+              <!-- Buscar y asignar contador -->
+              <div v-if="contadoresDisponibles.length" class="asignar-section">
+                <div class="search-asignar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="search-icon-sm">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                  </svg>
+                  <input
+                    v-model="busquedaContador"
+                    type="text"
+                    placeholder="Buscar por serie, tipo..."
+                    class="input-buscar-asignar"
+                  />
                 </div>
-                <span class="contador-estado" :class="c.estado.toLowerCase()">{{ c.estado }}</span>
+                <div v-if="busquedaContador && contadoresFiltradosDisponibles.length" class="resultados-asignar">
+                  <div
+                    v-for="c in contadoresFiltradosDisponibles" :key="c._id"
+                    class="resultado-item"
+                    @click="asignarContadorACliente(c._id)"
+                  >
+                    <span class="resultado-emoji">{{ emojiTipo(c.tipo_suministro) }}</span>
+                    <div class="resultado-info">
+                      <span class="resultado-nombre">{{ c.numero_serie }}</span>
+                      <span class="resultado-detalle">{{ c.tipo_suministro }} · {{ c.estado }}</span>
+                    </div>
+                    <span class="resultado-add">+</span>
+                  </div>
+                </div>
+                <div v-else-if="busquedaContador && !contadoresFiltradosDisponibles.length" class="empty-state small">
+                  No se encontraron contadores
+                </div>
               </div>
-            </div>
+              <!-- Lista de asignados -->
+              <div v-if="!contadoresModal.length" class="empty-state">
+                Este cliente no tiene contadores asignados
+              </div>
+              <div v-else class="contadores-list">
+                <div class="contador-item" v-for="c in contadoresModal" :key="c._id">
+                  <span class="contador-emoji">{{ emojiTipo(c.tipo_suministro) }}</span>
+                  <div class="contador-info">
+                    <span class="contador-serie">{{ c.numero_serie }}</span>
+                    <span class="contador-tipo">{{ c.tipo_suministro }}</span>
+                  </div>
+                  <span class="contador-estado" :class="c.estado.toLowerCase()">{{ c.estado }}</span>
+                  <button class="btn-desasignar" @click="desasignarContadorDeCliente(c._id)" title="Desasignar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" @click="cerrarModal">Cerrar</button>
@@ -222,6 +261,10 @@ const clienteAEliminar = ref(null)
 const contadoresCliente = ref({})
 const contadoresModal = ref([])
 const cargandoContadores = ref(false)
+const todosContadores = ref([])
+const contadorAAsignar = ref('')
+const asignando = ref(false)
+const busquedaContador = ref('')
 
 const form = ref({
   nombre: '', apellidos: '', email: '', telefono: '', direccion_facturacion: ''
@@ -290,13 +333,64 @@ const abrirContadores = async (cliente) => {
   modalContadores.value = true
   cargandoContadores.value = true
   contadoresModal.value = []
+  contadorAAsignar.value = ''
   try {
-    const todos = await contadoresService.getAll(0, 100)
-    contadoresModal.value = todos.filter(c => c.clientes?.includes(cliente._id))
+    todosContadores.value = await contadoresService.getAll(0, 100)
+    contadoresModal.value = todosContadores.value.filter(c => c.clientes?.includes(cliente._id))
   } catch (e) {
     errorGlobal.value = e.message
   } finally {
     cargandoContadores.value = false
+  }
+}
+
+const contadoresDisponibles = computed(() => {
+  const asignados = new Set(contadoresModal.value.map(c => c._id))
+  return todosContadores.value.filter(c => !asignados.has(c._id))
+})
+
+const contadoresFiltradosDisponibles = computed(() => {
+  const q = busquedaContador.value.toLowerCase()
+  if (!q) return []
+  return contadoresDisponibles.value.filter(c =>
+    c.numero_serie.toLowerCase().includes(q) ||
+    c.tipo_suministro.toLowerCase().includes(q) ||
+    c.cups_poliza?.toLowerCase().includes(q)
+  )
+})
+
+const recargarContadoresModal = async () => {
+  todosContadores.value = await contadoresService.getAll(0, 100)
+  contadoresModal.value = todosContadores.value.filter(c => c.clientes?.includes(clienteSeleccionado.value._id))
+  // Actualizar conteo en la tabla
+  clientes.value.forEach(cliente => {
+    contadoresCliente.value[cliente._id] = todosContadores.value.filter(c => c.clientes?.includes(cliente._id))
+  })
+}
+
+const asignarContadorACliente = async (contadorId) => {
+  const id = contadorId || contadorAAsignar.value
+  if (!id || !clienteSeleccionado.value) return
+  asignando.value = true
+  try {
+    await contadoresService.asignarCliente(id, clienteSeleccionado.value._id)
+    await recargarContadoresModal()
+    contadorAAsignar.value = ''
+    busquedaContador.value = ''
+  } catch (e) {
+    errorGlobal.value = e.message
+  } finally {
+    asignando.value = false
+  }
+}
+
+const desasignarContadorDeCliente = async (contadorId) => {
+  if (!clienteSeleccionado.value) return
+  try {
+    await contadoresService.desasignarCliente(contadorId, clienteSeleccionado.value._id)
+    await recargarContadoresModal()
+  } catch (e) {
+    errorGlobal.value = e.message
   }
 }
 
@@ -677,6 +771,50 @@ const eliminarCliente = async () => {
 .contador-estado.activo { background: rgba(0,230,118,0.15); color: #00e676; }
 .contador-estado.averiado { background: rgba(255,145,0,0.15); color: #ff9100; }
 .contador-estado.saboteado { background: rgba(255,23,68,0.15); color: #ff1744; }
+
+.asignar-section { margin-bottom: 1rem; }
+.search-asignar {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 0.5rem 0.75rem;
+}
+.search-asignar:focus-within { border-color: #00d4ff; }
+.search-icon-sm { width: 16px; height: 16px; color: #4a6080; flex-shrink: 0; }
+.input-buscar-asignar {
+  flex: 1; background: none; border: none; outline: none;
+  color: #e8f4ff; font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+}
+.input-buscar-asignar::placeholder { color: #4a6080; }
+.resultados-asignar {
+  margin-top: 0.5rem; max-height: 200px; overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+}
+.resultado-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.75rem; cursor: pointer; transition: background 0.15s;
+}
+.resultado-item:hover { background: rgba(0,212,255,0.08); }
+.resultado-item + .resultado-item { border-top: 1px solid rgba(255,255,255,0.04); }
+.resultado-emoji { font-size: 1.1rem; flex-shrink: 0; }
+.resultado-info { flex: 1; display: flex; flex-direction: column; }
+.resultado-nombre { font-size: 0.82rem; color: #e8f4ff; font-weight: 500; }
+.resultado-detalle { font-size: 0.7rem; color: #4a6080; font-family: 'Share Tech Mono', monospace; }
+.resultado-add {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,230,118,0.12); color: #00e676;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; font-weight: 700; flex-shrink: 0;
+}
+.empty-state.small { padding: 0.5rem; font-size: 0.8rem; }
+.btn-desasignar {
+  width: 28px; height: 28px; border-radius: 6px; border: none;
+  background: rgba(255,23,68,0.08); color: #ff1744;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s; flex-shrink: 0; margin-left: 0.5rem;
+}
+.btn-desasignar:hover { background: rgba(255,23,68,0.18); }
+.btn-desasignar svg { width: 14px; height: 14px; }
 
 .empty-state { text-align: center; color: #4a6080; font-size: 0.85rem; padding: 1rem; }
 

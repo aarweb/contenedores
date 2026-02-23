@@ -286,7 +286,7 @@ onMounted(async () => {
     const todasLecturas = []
     await Promise.all(contadores.map(async c => {
       try {
-        const ls = await lecturasService.getByContador(c._id, 0, 20)
+        const ls = await lecturasService.getByContador(c._id, 0, 200)
         ls.forEach(l => todasLecturas.push({
           ...l.datos,
           _id: l._id,
